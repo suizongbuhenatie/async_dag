@@ -1,5 +1,6 @@
-from async_dag import run_pipeline, Context
-from typing import Dict, Iterable, Iterator, Tuple
+from async_dag import run_sync_pipeline, Context
+from typing import Dict, Iterator, Tuple
+import time
 
 
 def mock_load() -> Iterator[Tuple[int, Dict]]:
@@ -8,13 +9,10 @@ def mock_load() -> Iterator[Tuple[int, Dict]]:
         yield (i, {"id": i, "text": f"document {i}"})
 
 
-def mock_pipeline(contexts: Iterable[Context]):
+def mock_pipeline(context: Context):
     """模拟管道函数：在文本后追加 ' processed'"""
-    for ctx in contexts:
-        ctx.payload["text"] += " processed"
-        ctx.info("processed text")
-        ctx.warning("warning message")
-        ctx.error("error message")
+    context.payload["text"] += " processed"
+    time.sleep(1)
 
 
 def mock_save(context: Context) -> None:
@@ -24,10 +22,11 @@ def mock_save(context: Context) -> None:
 
 
 # 运行测试
-run_pipeline(
+run_sync_pipeline(
     load_func=mock_load,
     save_func=mock_save,
     pipeline_func=mock_pipeline,
-    worker=3,
+    process_cnt=2,
+    thread_cnt=5,
     buffer_size=5,
 )

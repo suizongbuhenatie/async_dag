@@ -14,7 +14,7 @@ def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
         handler = colorlog.StreamHandler()
         handler.setFormatter(
             colorlog.ColoredFormatter(
-                "%(log_color)s%(levelname).1s %(asctime)s %(name)s: %(message)s",
+                "%(log_color)s%(levelname).1s %(asctime)s %(filename)s:%(lineno)d %(message)s",
                 datefmt="%m-%d %H:%M:%S",
                 log_colors={
                     "DEBUG": "cyan",
@@ -39,4 +39,4 @@ def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
     return logger
 
 
-logger = get_logger("async_dag")
+logger = get_logger("async_dag", logging.DEBUG)
