@@ -1,55 +1,31 @@
-from __future__ import annotations
-
-import copy
-import time
+from pydantic import BaseModel
 import uuid
-from dataclasses import dataclass, field, replace
-from typing import Any, Dict, List, Optional
+from typing import Dict, List
+from async_dag.logger import logger
 
 
-@dataclass
-class PipelineContext:
-    """Context object propagated through the pipeline.
+class Context(BaseModel):
+    idx: int
+    logs: List[Dict[str, str]] = []
+    payload: Dict = {}
 
-    This captures tracing information such as the current run id, the
-    lineage of nodes that have processed a payload, and any metadata callers
-    want to thread through the DAG.
-    """
+    def error(self, msg: str) -> None:
+        self._log("error", msg)
 
-    run_id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    data_id: Optional[str] = None
-    node_path: List[str] = field(default_factory=list)
-    created_at: float = field(default_factory=time.time)
-    meta: Dict[str, Any] = field(default_factory=dict)
+    def info(self, msg: str) -> None:
+        self._log("info", msg)
 
-    def _clone(self, **updates: Any) -> "PipelineContext":
-        base = replace(self)
-        base.meta = copy.deepcopy(self.meta)
-        for key, value in updates.items():
-            setattr(base, key, value)
-        return base
+    def warning(self, msg: str) -> None:
+        self._log("warning", msg)
+    
+    def _log(self, level: str, msg: str) -> None:
+        self.logs.append({"level": level, "msg": msg})
 
-    def for_node(self, node_id: str) -> "PipelineContext":
-        """Return a copy of the context scoped to a downstream node."""
-
-        return self._clone(node_path=[*self.node_path, node_id])
-
-    def with_data_id(self, data_id: str) -> "PipelineContext":
-        """Attach or replace the per-payload identifier."""
-
-        return self._clone(data_id=data_id)
-
-    @property
-    def current_node(self) -> Optional[str]:
-        return self.node_path[-1] if self.node_path else None
-
-    def log_details(self) -> Dict[str, Any]:
-        """Key/value map to include in structured logs."""
-
-        return {
-            "run_id": self.run_id,
-            "data_id": self.data_id,
-            "task_id": f"{self.run_id}:{self.data_id}" if self.data_id else self.run_id,
-            "node": self.current_node,
-            "path": "->".join(self.node_path),
-        }
+    def print_logs(self) -> None:
+        for log in self.logs:
+            if log["level"] == "error":
+                logger.error(f"[logid:{self.idx}] {log['msg']}")
+            elif log["level"] == "warning":
+                logger.warning(f"[logid:{self.idx}] {log['msg']}")
+            else:
+                logger.info(f"[logid:{self.idx}] {log['msg']}")
