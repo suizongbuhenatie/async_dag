@@ -75,7 +75,7 @@ def run_sync_pipeline(
     batch_size: int = 4,
 ):
     assert batch_size >= thread_cnt, (
-        "batch_size must be greater than or equal to thread_cnt"
+        f"batch_size {batch_size} must be greater than or equal to thread_cnt {thread_cnt}"
     )
     t0 = time.time()
     task_queue = Queue(maxsize=buffer_size)

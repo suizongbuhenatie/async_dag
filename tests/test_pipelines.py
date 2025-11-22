@@ -28,5 +28,5 @@ run_sync_pipeline(
     pipeline_func=mock_pipeline,
     process_cnt=2,
     thread_cnt=5,
-    buffer_size=5,
+    batch_size=5,
 )
