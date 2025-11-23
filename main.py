@@ -2,7 +2,7 @@ import asyncio
 import logging
 from typing import Iterable
 
-from async_dag import (
+from yakits import (
     PipelineContext,
     run_function_pipeline,
     run_function_pipeline_in_subprocess,

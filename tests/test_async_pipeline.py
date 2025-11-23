@@ -1,4 +1,4 @@
-from async_dag import run_pipeline, Context
+from yakits import run_pipeline, Context
 from typing import Dict, Iterator, Tuple, List
 import asyncio
 import pytest

@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Dict, List, Any
-from async_dag.logger import logger
+from yakits import logger
 import uuid
 import time
 

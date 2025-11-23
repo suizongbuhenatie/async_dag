@@ -13,8 +13,8 @@ import os
 import time
 from multiprocessing import Queue, Process
 from concurrent.futures import ThreadPoolExecutor, Future
-from async_dag.logger import logger
-from async_dag.context import Context
+from yakits import logger
+from yakits.pipeline.context import Context
 import inspect
 import asyncio
 import json
