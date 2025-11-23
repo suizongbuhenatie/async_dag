@@ -1,23 +1,22 @@
-from typing import Callable, Dict, Iterable, Iterator, Tuple, List
+from typing import Callable, Dict, Iterator, Tuple, List, Optional
 import time
 from multiprocessing import Queue, Process
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, Future
 from async_dag.logger import logger
 from async_dag.context import Context
-from typing import Optional
 
-type PipelineContexts = Iterable[Context]
-type PipelineFunc = Callable[Context, None]
-type SaveOpFunc = Callable[Context, None]
+type PipelineContexts = List[Context]
+type PipelineFunc = Callable[[Context], None]
+type SaveOpFunc = Callable[[Context], None]
 type LoadOpFunc = Callable[[], Iterator[Tuple[int, Dict]]]
 
 
 def producer_process(
     load_func: LoadOpFunc,
-    task_queue: Queue,
+    task_queue: Queue[Optional[PipelineContexts]],
     worker_cnt: int,
     batch_size: int,
-):
+) -> None:
     iterator = load_func()
     batch: PipelineContexts = []
     for idx, doc in iterator:
@@ -37,9 +36,12 @@ def producer_process(
 
 
 def worker_process(
-    task_queue: Queue, result_queue: Queue, pipeline_func: PipelineFunc, thread_cnt: int
-):
-    def timed_pipeline_func(context: Context):
+    task_queue: Queue[Optional[PipelineContexts]],
+    result_queue: Queue[Optional[PipelineContexts]],
+    pipeline_func: PipelineFunc,
+    thread_cnt: int,
+) -> None:
+    def timed_pipeline_func(context: Context) -> None:
         context.start()
         logger.debug(f"[task:{context.idx}] start")
         pipeline_func(context)
@@ -54,7 +56,7 @@ def worker_process(
                 break
             logger.debug(f"[worker] get {len(contexts)} tasks")
 
-            tasks = []
+            tasks: List[Future[None]] = []
             for context in contexts:
                 tasks.append(executor.submit(timed_pipeline_func, context))
 
@@ -73,13 +75,13 @@ def run_sync_pipeline(
     thread_cnt: int = 1,
     buffer_size: int = 100,
     batch_size: int = 4,
-):
+) -> None:
     assert batch_size >= thread_cnt, (
         f"batch_size {batch_size} must be greater than or equal to thread_cnt {thread_cnt}"
     )
     t0 = time.time()
-    task_queue = Queue(maxsize=buffer_size)
-    result_queue = Queue(maxsize=buffer_size)
+    task_queue: Queue[Optional[PipelineContexts]] = Queue(maxsize=buffer_size)
+    result_queue: Queue[Optional[PipelineContexts]] = Queue(maxsize=buffer_size)
 
     producer = Process(
         target=producer_process, args=(load_func, task_queue, process_cnt, batch_size)

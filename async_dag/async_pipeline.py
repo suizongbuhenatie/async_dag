@@ -1,29 +1,26 @@
-from typing import Callable, Dict, Iterable, Iterator, Tuple, List
+from typing import Callable, Dict, Iterator, Tuple, List, Optional, Awaitable
 from multiprocessing import Queue, Process
 from async_dag.logger import logger
 from async_dag.context import Context
-from typing import Optional, Awaitable, ParamSpec, TypeVar
 import asyncio
 from async_dag.sync_pipeline import producer_process
 import time
 
 
-P = ParamSpec("P")
-R = TypeVar("R")
-type AsyncCallable[P, R] = Callable[P, Awaitable[R]]
-
-type PipelineContexts = Iterable[Context]
-type APipelineFunc = AsyncCallable[Context, None]
-type SaveOpFunc = Callable[Context, None]
+type PipelineContexts = List[Context]
+type APipelineFunc = Callable[[Context], Awaitable[None]]
+type SaveOpFunc = Callable[[Context], None]
 type LoadOpFunc = Callable[[], Iterator[Tuple[int, Dict]]]
 
 
 def worker_process(
-    task_queue: Queue, result_queue: Queue, pipeline_func: APipelineFunc
-):
+    task_queue: Queue[Optional[PipelineContexts]],
+    result_queue: Queue[Optional[PipelineContexts]],
+    pipeline_func: APipelineFunc,
+) -> None:
     loop = asyncio.get_event_loop()
 
-    async def timed_pipeline_func(context: Context):
+    async def timed_pipeline_func(context: Context) -> None:
         context.start()
         await pipeline_func(context)
         context.finish()
@@ -35,7 +32,7 @@ def worker_process(
             result_queue.put(None)
             break
 
-        tasks = []
+        tasks: List[Awaitable[None]] = []
         for context in contexts:
             tasks.append(timed_pipeline_func(context))
 
@@ -50,11 +47,11 @@ def run_async_pipeline(
     worker: int = 4,
     buffer_size: int = 100,
     batch_size: int = 4,
-):
+) -> None:
     t0 = time.time()
 
-    task_queue = Queue(maxsize=buffer_size)
-    result_queue = Queue(maxsize=buffer_size)
+    task_queue: Queue[Optional[PipelineContexts]] = Queue(maxsize=buffer_size)
+    result_queue: Queue[Optional[PipelineContexts]] = Queue(maxsize=buffer_size)
 
     producer = Process(
         target=producer_process, args=(load_func, task_queue, worker, batch_size)
