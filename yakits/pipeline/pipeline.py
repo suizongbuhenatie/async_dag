@@ -38,7 +38,8 @@ def async_worker_process(
     max_retries: int = 3,
     batch_size: int = 10,
 ) -> None:
-    loop = asyncio.get_event_loop()
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
 
     async def timed_pipeline_func(context: Context) -> None:
         context.start()
@@ -107,6 +108,10 @@ def async_worker_process(
             result_queue.put(finish_context)
 
     result_queue.put(None)
+    try:
+        loop.close()
+    except Exception:
+        pass
 
 
 def producer_process(
@@ -206,7 +211,7 @@ def sync_worker_process(
                     else:
                         context.error(f"[task:{context.idx}] max retries reached")
 
-            logger.debug(f"[worker] finish {len(contexts)} tasks")
+            logger.debug(f"[worker] finish {len(finish_context)} tasks")
             result_queue.put(finish_context)
 
     result_queue.put(None)
@@ -316,7 +321,7 @@ def run_pipeline(
         )
         save_func = partial(_default_save_func, output_path=output_path)
 
-    if resume and run_debug is False:
+    if resume and output_path is not None and run_debug is False:
         processed_ids = resume_from_task_info(output_path)
     else:
         processed_ids = set()
