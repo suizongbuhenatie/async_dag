@@ -54,7 +54,15 @@ def async_worker_process(
 
         if not is_ready_to_finish and len(pendding_contexts) < batch_size:
             # if pendding contexts is more than batch_size, stop get data from task_queue
-            contexts: Optional[PipelineContexts] = task_queue.get()
+            try:
+                contexts: Optional[PipelineContexts] = task_queue.get(timeout=3)
+            except Exception as e:
+                logger.error(
+                    "get data from queue timeout, please check if producer is finished."
+                )
+                logger.exception(e)
+                break
+
             if contexts is None:
                 is_ready_to_finish = True
             else:
@@ -70,7 +78,6 @@ def async_worker_process(
             f"[worker] ready to run {len(tasks)} tasks, {len(running_contexts)} contexts"
         )
         if is_ready_to_finish and len(tasks) == 0:
-            result_queue.put(None)
             break
 
         results = loop.run_until_complete(
@@ -98,6 +105,8 @@ def async_worker_process(
         )
         if len(finish_context) > 0:
             result_queue.put(finish_context)
+
+    result_queue.put(None)
 
 
 def producer_process(
@@ -155,7 +164,15 @@ def sync_worker_process(
         while True:
             tasks: List[Future[None]] = []
             if not is_ready_to_finish and len(pendding_contexts) < batch_size:
-                contexts: Optional[PipelineContexts] = task_queue.get()
+                try:
+                    contexts: Optional[PipelineContexts] = task_queue.get(timeout=3)
+                except Exception as e:
+                    logger.error(
+                        "get data from queue timeout, please check if producer is finished."
+                    )
+                    logger.exception(e)
+                    break
+
                 if contexts is None:
                     is_ready_to_finish = True
                 else:
@@ -170,7 +187,6 @@ def sync_worker_process(
             logger.debug(f"[worker] running {len(tasks)} tasks")
 
             if is_ready_to_finish and len(tasks) == 0:
-                result_queue.put(None)
                 break
 
             finish_context: PipelineContexts = []
@@ -192,6 +208,8 @@ def sync_worker_process(
 
             logger.debug(f"[worker] finish {len(contexts)} tasks")
             result_queue.put(finish_context)
+
+    result_queue.put(None)
 
 
 def _default_save_func(context: Context, output_path: str) -> None:
