@@ -1,4 +1,4 @@
-from async_dag import run_sync_pipeline, Context
+from async_dag import run_pipeline, Context
 from typing import Dict, Iterator, Tuple, List
 import time
 import pytest
@@ -31,7 +31,7 @@ def test_run_sync_pipeline_processes_payloads(small_batch):
     def collect_save(context: Context) -> None:
         results.append(context)
 
-    run_sync_pipeline(
+    run_pipeline(
         load_func=mock_load,
         save_func=collect_save,
         pipeline_func=mock_pipeline,

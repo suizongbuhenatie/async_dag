@@ -39,4 +39,4 @@ def get_logger(name: str, level: int = logging.INFO) -> logging.Logger:
     return logger
 
 
-logger = get_logger("async_dag", logging.INFO)
+logger = get_logger("async_dag", logging.DEBUG)

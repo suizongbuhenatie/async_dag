@@ -6,6 +6,7 @@ from types import SimpleNamespace
 try:  # Provide a light-weight pydantic stub if dependency isn't installed
     import pydantic  # type: ignore
 except ImportError:  # pragma: no cover
+
     class _FieldDefault:
         def __init__(self, default=None, default_factory=None):
             self.default = default

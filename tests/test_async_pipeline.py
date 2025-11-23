@@ -1,4 +1,4 @@
-from async_dag import run_async_pipeline, Context
+from async_dag import run_pipeline, Context
 from typing import Dict, Iterator, Tuple, List
 import asyncio
 import pytest
@@ -36,11 +36,11 @@ def test_run_async_pipeline_processes_payloads(async_batch):
     def collect_save(context: Context) -> None:
         results.append(context)
 
-    run_async_pipeline(
+    run_pipeline(
         load_func=mock_load,
         save_func=collect_save,
         pipeline_func=mock_pipeline,
-        worker=1,
+        process_cnt=1,
         buffer_size=len(async_batch),
         batch_size=len(async_batch),
     )
@@ -53,3 +53,7 @@ def test_run_async_pipeline_processes_payloads(async_batch):
     for ctx in results:
         assert ctx.start_time <= ctx.end_time
         assert any(log["level"] == "info" and "use" in log["msg"] for log in ctx.logs)
+
+
+if __name__ == "__main__":
+    pytest.main()
