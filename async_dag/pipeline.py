@@ -1,5 +1,15 @@
-from operator import is_
-from typing import Callable, Dict, Iterator, Tuple, List, Optional, Awaitable, Union
+from typing import (
+    Callable,
+    Dict,
+    Iterator,
+    Tuple,
+    List,
+    Optional,
+    Awaitable,
+    Union,
+    Set,
+)
+import os
 import time
 from multiprocessing import Queue, Process
 from concurrent.futures import ThreadPoolExecutor, Future
@@ -7,6 +17,8 @@ from async_dag.logger import logger
 from async_dag.context import Context
 import inspect
 import asyncio
+import json
+from functools import partial
 
 type PipelineContexts = List[Context]
 type PipelineFunc = Callable[[Context], None]
@@ -91,12 +103,16 @@ def async_worker_process(
 def producer_process(
     load_func: LoadOpFunc,
     task_queue: Queue,
+    processed_ids: Set[int],
     worker_cnt: int,
     batch_size: int,
 ) -> None:
     iterator = load_func()
     batch: PipelineContexts = []
     for idx, doc in iterator:
+        if idx in processed_ids:
+            continue
+
         context: Context = Context(idx=idx, payload=doc)
         batch.append(context)
         logger.debug(f"[load] idx={context.idx} load finish")
@@ -173,15 +189,44 @@ def sync_worker_process(
             result_queue.put(finish_context)
 
 
+def _default_save_func(context: Context, output_path: str) -> None:
+    task_info_path = f"{output_path}.task_info"
+    with (
+        open(task_info_path, "a+", buffering=1) as task_info_f,
+        open(output_path, "a+", buffering=1) as f,
+    ):
+        f.write(f"{context.idx}\t{json.dumps(context.payload)}\n")
+        task_info_f.write(f"{context.idx}\t{context.usage_time():.2f}s\n")
+
+
+def resume_from_task_info(output_path: str) -> Set[int]:
+    task_info_path = f"{output_path}.task_info"
+
+    if not os.path.exists(task_info_path):
+        return set()
+
+    try:
+        with open(task_info_path, "r") as f:
+            processed_ids = {int(line.split("\t")[0]) for line in f}
+        logger.info(f"resume from {task_info_path}, get {len(processed_ids)} records")
+        return processed_ids
+    except Exception as e:
+        logger.error(f"error while resume from {task_info_path}: {e}")
+        raise e
+
+
 def run_pipeline(
     load_func: LoadOpFunc,
-    save_func: SaveOpFunc,
     pipeline_func: Union[PipelineFunc, APipelineFunc],
+    *,
+    save_func: Optional[SaveOpFunc] = None,
+    output_path: Optional[str] = None,
     process_cnt: int = 1,
     thread_cnt: int = 1,
     buffer_size: int = 100,
     batch_size: int = 4,
     max_retries: int = 3,
+    resume: bool = True,
 ) -> None:
     """
     Execute a data-processing pipeline with configurable parallelism.
@@ -191,8 +236,13 @@ def run_pipeline(
     load_func : LoadOpFunc
         A generator that yields (index, payload) pairs. Each payload becomes
         the input document for one Context.
-    save_func : SaveOpFunc
+    save_func : SaveOpFunc, optional
         A callable that receives a finished Context and persists its results.
+        Exactly one of `save_func` or `output_path` must be provided.
+    output_path : str, optional
+        If given, results are automatically appended to this file (and a
+        side-car *.task_info file) using the built-in `_default_save_func`.
+        Exactly one of `save_func` or `output_path` must be provided.
     pipeline_func : Union[PipelineFunc, APipelineFunc]
         The user-supplied transformation logic. It can be a regular function
         (runs in thread pool) or an async coroutine function (runs in an event
@@ -209,22 +259,51 @@ def run_pipeline(
     batch_size : int, default 4
         Number of Context objects sent to a worker in a single batch.
         Must be ≥ thread_cnt for sync functions.
+    max_retries : int, default 3
+        Maximum retry attempts for a single Context before it is dropped.
+    resume : bool, default True
+        If True, skip indices already recorded in the task-info file
+        (created when `output_path` is used).
 
     Returns
     -------
     None
         The function blocks until all data is processed and all worker processes
         have terminated.
+
+    Notes
+    -----
+    - When `pipeline_func` is an async coroutine function, each worker process
+      runs its own asyncio event loop; `thread_cnt` is ignored.
+    - When `pipeline_func` is a regular function, each worker process spawns
+      `thread_cnt` threads to execute tasks concurrently.
+    - Retries are handled locally inside each worker; failed records after
+      exceeding `max_retries` are permanently dropped.
     """
     assert batch_size >= thread_cnt, (
         f"batch_size {batch_size} must be greater than or equal to thread_cnt {thread_cnt}"
     )
+    assert save_func is not None or output_path is not None, (
+        "save_func or output_path must be provided"
+    )
+    if output_path is not None:
+        assert save_func is None, (
+            "save_func and output_path cannot be provided at the same time"
+        )
+        save_func = partial(_default_save_func, output_path=output_path)
+
+    if resume:
+        processed_ids = resume_from_task_info(output_path)
+    else:
+        processed_ids = set()
+
     t0 = time.time()
     task_queue: Queue[Optional[PipelineContexts]] = Queue(maxsize=buffer_size)
     result_queue: Queue[Optional[PipelineContexts]] = Queue(maxsize=buffer_size)
 
     producer = Process(
-        target=producer_process, args=(load_func, task_queue, process_cnt, batch_size)
+        target=producer_process,
+        args=(load_func, task_queue, processed_ids, process_cnt, batch_size),
     )
     producer.start()
 
