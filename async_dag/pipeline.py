@@ -106,6 +106,7 @@ def producer_process(
     processed_ids: Set[int],
     worker_cnt: int,
     batch_size: int,
+    run_debug: bool,
 ) -> None:
     iterator = load_func()
     batch: PipelineContexts = []
@@ -113,13 +114,17 @@ def producer_process(
         if idx in processed_ids:
             continue
 
-        context: Context = Context(idx=idx, payload=doc)
+        context: Context = Context(idx=idx, payload=doc, run_debug=run_debug)
         batch.append(context)
         logger.debug(f"[load] idx={context.idx} load finish")
         if len(batch) >= batch_size:
             logger.debug(f"[load] idx={context.idx} send")
             task_queue.put(batch)
             batch = []
+
+        if run_debug:
+            # in debug mode, only run one batch
+            break
 
     if len(batch) > 0:
         task_queue.put(batch)
@@ -227,6 +232,7 @@ def run_pipeline(
     batch_size: int = 4,
     max_retries: int = 3,
     resume: bool = True,
+    run_debug: bool = False,
 ) -> None:
     """
     Execute a data-processing pipeline with configurable parallelism.
@@ -292,10 +298,16 @@ def run_pipeline(
         )
         save_func = partial(_default_save_func, output_path=output_path)
 
-    if resume:
+    if resume and run_debug is False:
         processed_ids = resume_from_task_info(output_path)
     else:
         processed_ids = set()
+
+    if run_debug:
+        logger.info("run in debug mode, only process one batch")
+        process_cnt = 1
+        thread_cnt = 1
+        batch_size = 1
 
     t0 = time.time()
     task_queue: Queue[Optional[PipelineContexts]] = Queue(maxsize=buffer_size)
@@ -303,7 +315,7 @@ def run_pipeline(
 
     producer = Process(
         target=producer_process,
-        args=(load_func, task_queue, processed_ids, process_cnt, batch_size),
+        args=(load_func, task_queue, processed_ids, process_cnt, batch_size, run_debug),
     )
     producer.start()
 
