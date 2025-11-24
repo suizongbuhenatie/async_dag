@@ -1,7 +1,7 @@
 [project]
-name = "async-dag"
+name = "yakits"
 version = "0.1.0"
-description = "Asyncio-first DAG pipeline toolkit with queue-based streaming and multiprocess runners"
+description = ""
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -12,3 +12,8 @@ dependencies = [
 [build-system]
 requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.1",
+]

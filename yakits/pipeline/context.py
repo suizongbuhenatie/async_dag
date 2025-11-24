@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import Dict, List, Any
-from async_dag.logger import logger
+from yakits import logger
 import uuid
 import time
 
@@ -12,6 +12,7 @@ class Context(BaseModel):
     payload: Dict = Field(default_factory=dict)
     start_time: float = Field(default_factory=time.time)
     end_time: float = Field(default_factory=time.time)
+    retry_count: int = 0
 
     def model_post_init(self, context: Any, /) -> None:
         self.log_id = f"{self.idx}-{uuid.uuid4().hex}"
